@@ -22,7 +22,9 @@ def search_cves(product, version, max_results=5):
             score = metrics["cvssMetricV31"][0]["cvssData"]["baseScore"]
             severity = metrics["cvssMetricV31"][0]["cvssData"]["baseSeverity"]
         elif "cvssMetricV2" in metrics:
-            score = metrics["cvssMetricV2"][0]["cvssData"]["baseScore"]
+            v2 = metrics["cvssMetricV2"][0]
+            score = v2["cvssData"]["baseScore"]
+            severity = v2.get("baseSeverity")
         
         matches.append({
             "cve_id": cve["id"],
