@@ -52,6 +52,20 @@ class PortScanner:
         print(f"[+] Found {len(results)} open port(s) on {target}")
         return results
 
+        # in scanner/port_scanner.py, inside PortScanner class
+def scan_target(self, target, port_range="1-10000"):
+    results = []
+    # ... your existing nmap scan logic ...
+    for port in self.nm[target]['tcp']:
+        service_info = self.nm[target]['tcp'][port]
+        results.append({
+            "port": port,
+            "service": service_info.get('name', ''),
+            "product": service_info.get('product', ''),
+            "version": service_info.get('version', '')
+        })
+    return results
+
 #Standalone test - run this file directly to try it out on its own, before it's wired into the GUI
 if __name__ == "__main__":
     target_ip = input("Enter target IP to scan: ").strip()
