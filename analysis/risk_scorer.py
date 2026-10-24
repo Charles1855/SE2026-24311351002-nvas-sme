@@ -1,6 +1,7 @@
 from database.db import get_all_findings
 
-def score_to_levels(score):
+
+def score_to_level(score):
     if score is None:
         return "INFO"
     if score >= 9.0:
@@ -11,6 +12,7 @@ def score_to_levels(score):
         return "MEDIUM"
     else:
         return "LOW"
+
 
 def calculate_port_risk():
     rows = get_all_findings()
@@ -25,25 +27,24 @@ def calculate_port_risk():
                 "port": port,
                 "product": product,
                 "version": version,
-                "cve_count":0,
-                "max_cvss":0.0,
-                "driving_cve": None
+                "cve_count": 0,
+                "max_cvss": 0.0,
+                "driving_cve": None,
             }
-        
+
         if cve_id is not None:
             ports[key]["cve_count"] += 1
             if cvss_score is not None and cvss_score > ports[key]["max_cvss"]:
                 ports[key]["max_cvss"] = cvss_score
                 ports[key]["driving_cve"] = cve_id
-    
+
     results = []
     for data in ports.values():
         score = data["max_cvss"] if data["cve_count"] > 0 else None
         results.append({
             **data,
-            "risk_level": score_to_levels(score)
+            "risk_level": score_to_level(score),
         })
-    
+
     results.sort(key=lambda r: r["max_cvss"], reverse=True)
     return results
-
