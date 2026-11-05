@@ -1,4 +1,4 @@
 # Copy this file to config.py and paste your own NVD API key.
 # Free key: https://nvd.nist.gov/developers/request-an-api-key
 # config.py is listed in .gitignore, so your key never goes to GitHub.
-NVD_API_KEY = "4BFEAE57-B0E7-4D5F-93C5-5F1F57CB514A"
+NVD_API_KEY = ""
