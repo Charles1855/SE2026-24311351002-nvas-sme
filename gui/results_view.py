@@ -1,51 +1,47 @@
 import tkinter as tk
+import webbrowser
 from tkinter import ttk
 
 from analysis.risk_scorer import score_to_level
+from gui import theme
 
-RISK_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
-
-# background and text colour for each risk level
-RISK_COLORS = {
-    "CRITICAL": ("#b71c1c", "white"),
-    "HIGH": ("#e65100", "white"),
-    "MEDIUM": ("#fbc02d", "black"),
-    "LOW": ("#c8e6c9", "black"),
-    "INFO": ("#eceff1", "black"),
-}
-
-# "INFO" means no CVE matched, which is not the same as "safe"
-RISK_TEXT = {"INFO": "NO MATCH"}
-
-
-def risk_text(level):
-    return RISK_TEXT.get(level, level)
+NVD_URL = "https://nvd.nist.gov/vuln/detail/"
+LOW_CONFIDENCE = "Name only"
 
 
 class ResultsView(tk.Frame):
-    def __init__(self, parent, app, target, matched):
-        super().__init__(parent, padx=30, pady=20)
+    def __init__(self, parent, app, target, matched, info=None):
+        super().__init__(parent, bg=theme.BG, padx=32, pady=14)
         self.app = app
         self.rows = self.build_rows(matched)
+        info = info or {}
 
-        # Title row
-        top = tk.Frame(self)
+        # ---- title row ----
+        top = tk.Frame(self, bg=theme.BG)
         top.pack(fill="x")
-        tk.Label(top, text="Scan Results", font=("Segoe UI", 18, "bold")).pack(side="left")
-        ttk.Button(top, text="New Scan", command=app.show_scan_view).pack(side="right")
-
         tk.Label(
-            self,
-            text=f"Target: {target}   |   {len(self.rows)} open ports",
-            fg="#555555",
-            font=("Segoe UI", 10),
-        ).pack(anchor="w", pady=(0, 10))
+            top, text="Scan Results", bg=theme.BG, fg=theme.TEXT,
+            font=(theme.FONT, 20, "bold"),
+        ).pack(side="left")
+        ttk.Button(
+            top, text="New Scan", style="Accent.TButton", command=app.show_scan_view
+        ).pack(side="right")
+
+        parts = [f"Target {target}", f"{len(self.rows)} open ports"]
+        if info.get("finished"):
+            parts.append(f"scanned at {info['finished'].strftime('%H:%M')}")
+        if info.get("seconds") is not None:
+            parts.append(f"took {info['seconds']}s")
+        tk.Label(
+            self, text="   \u00b7   ".join(parts), bg=theme.BG, fg=theme.MUTED,
+            font=(theme.FONT, 10),
+        ).pack(anchor="w", pady=(0, 8))
 
         self.build_summary()
         self.build_table()
         self.build_details()
 
-        # Show the highest-risk port first
+        # Start with the highest-risk port selected
         if self.rows:
             self.table.selection_set("0")
 
@@ -54,7 +50,7 @@ class ResultsView(tk.Frame):
     def build_rows(self, matched):
         rows = []
         for entry in matched:
-            cves = entry["cves"]
+            cves = sorted(entry["cves"], key=lambda c: c["cvss_score"] or 0, reverse=True)
             scores = [c["cvss_score"] for c in cves if c["cvss_score"] is not None]
             top = max(scores) if scores else None
             rows.append({
@@ -64,48 +60,56 @@ class ResultsView(tk.Frame):
                 "cves": cves,
                 "top_cvss": top,
                 "level": score_to_level(top),
+                "match": entry.get("match_type", ""),
             })
-        # highest CVSS first, ports with no score last
-        rows.sort(key=lambda r: (r["top_cvss"] is None, -(r["top_cvss"] or 0), r["port"]))
+        # highest CVSS first, then more CVEs, then lowest port number
+        rows.sort(key=lambda r: (r["top_cvss"] is None, -(r["top_cvss"] or 0),
+                                 -len(r["cves"]), r["port"]))
         return rows
 
     # ---------- layout ----------
 
     def build_summary(self):
-        bar = tk.Frame(self)
+        bar = tk.Frame(self, bg=theme.BG)
         bar.pack(fill="x", pady=(0, 10))
-        for level in RISK_ORDER:
+        for column, level in enumerate(theme.RISK_ORDER):
+            bar.columnconfigure(column, weight=1, uniform="cards")
             count = sum(1 for r in self.rows if r["level"] == level)
-            bg, fg = RISK_COLORS[level]
+            bg, fg = theme.RISK_COLORS[level]
+            card = tk.Frame(bar, bg=bg)
+            card.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 8, 0))
             tk.Label(
-                bar,
-                text=f"{risk_text(level)}: {count}",
-                bg=bg,
-                fg=fg,
-                font=("Segoe UI", 10, "bold"),
-                padx=14,
-                pady=6,
-            ).pack(side="left", padx=(0, 8))
+                card, text=str(count), bg=bg, fg=fg, font=(theme.FONT, 18, "bold")
+            ).pack(pady=(4, 0))
+            tk.Label(
+                card, text=theme.risk_label(level), bg=bg, fg=fg,
+                font=(theme.FONT, 9, "bold"),
+            ).pack(pady=(0, 4))
 
     def build_table(self):
-        frame = tk.Frame(self)
-        frame.pack(fill="both", expand=True)
+        frame = tk.Frame(
+            self, bg=theme.CARD, highlightbackground=theme.BORDER,
+            highlightcolor=theme.BORDER, highlightthickness=1,
+        )
+        frame.pack(fill="x")  # fixed height: spare window room goes to the details panel
 
-        columns = ("port", "product", "version", "cves", "cvss", "risk")
+        columns = ("rank", "port", "product", "version", "cves", "cvss", "risk", "match")
         self.table = ttk.Treeview(
-            frame, columns=columns, show="headings", height=9, selectmode="browse"
+            frame, columns=columns, show="headings", height=6, selectmode="browse"
         )
         headings = {
-            "port": ("Port", 70),
-            "product": ("Service", 230),
-            "version": ("Version", 190),
-            "cves": ("CVEs", 70),
-            "cvss": ("Top CVSS", 90),
-            "risk": ("Risk", 120),
+            "rank": ("#", 46),
+            "port": ("Port", 64),
+            "product": ("Service", 220),
+            "version": ("Version", 150),
+            "cves": ("CVEs", 56),
+            "cvss": ("Top CVSS", 84),
+            "risk": ("Risk", 100),
+            "match": ("Match", 140),
         }
         for col, (text, width) in headings.items():
             self.table.heading(col, text=text)
-            anchor = "w" if col in ("product", "version") else "center"
+            anchor = "w" if col in ("product", "version", "match") else "center"
             self.table.column(col, width=width, anchor=anchor)
 
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.table.yview)
@@ -113,22 +117,30 @@ class ResultsView(tk.Frame):
         self.table.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        for level, (bg, fg) in RISK_COLORS.items():
+        for level, (bg, fg) in theme.RISK_COLORS.items():
             self.table.tag_configure(level, background=bg, foreground=fg)
 
+        rank = 0
         for index, row in enumerate(self.rows):
+            if row["cves"]:
+                rank += 1
+                rank_text = str(rank)
+            else:
+                rank_text = "-"
             top = row["top_cvss"] if row["top_cvss"] is not None else "-"
             self.table.insert(
                 "",
                 "end",
                 iid=str(index),
                 values=(
+                    rank_text,
                     row["port"],
                     row["product"],
                     row["version"],
                     len(row["cves"]),
                     top,
-                    risk_text(row["level"]),
+                    theme.risk_label(row["level"]),
+                    row["match"] or "-",
                 ),
                 tags=(row["level"],),
             )
@@ -136,50 +148,105 @@ class ResultsView(tk.Frame):
         self.table.bind("<<TreeviewSelect>>", self.show_details)
 
     def build_details(self):
+        label_row = tk.Frame(self, bg=theme.BG)
+        label_row.pack(fill="x", pady=(10, 4))
         tk.Label(
-            self, text="Details (click a row above)", font=("Segoe UI", 10, "bold")
-        ).pack(anchor="w", pady=(12, 4))
+            label_row, text="Details  (click a CVE ID to open it on nvd.nist.gov)",
+            bg=theme.BG, fg=theme.TEXT, font=(theme.FONT, 10, "bold"),
+        ).pack(side="left")
+        tk.Label(
+            label_row, text="NO MATCH does not prove a service is safe.",
+            bg=theme.BG, fg=theme.MUTED, font=(theme.FONT, 9),
+        ).pack(side="right")
 
-        self.details = tk.Text(
-            self, height=10, wrap="word", font=("Segoe UI", 10), bg="#fafafa", state="disabled"
+        frame = tk.Frame(
+            self, bg=theme.CARD, highlightbackground=theme.BORDER,
+            highlightcolor=theme.BORDER, highlightthickness=1,
         )
-        self.details.pack(fill="both", expand=True)
-        self.details.tag_configure("title", font=("Segoe UI", 11, "bold"))
-        self.details.tag_configure("cve", font=("Segoe UI", 10, "bold"))
-        self.details.tag_configure("muted", foreground="#666666")
+        frame.pack(fill="both", expand=True)
+        self.details = tk.Text(
+            frame, height=5, wrap="word", font=(theme.FONT, 10), bg=theme.CARD,
+            relief="flat", borderwidth=0, padx=12, pady=8, state="disabled",
+        )
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.details.yview)
+        self.details.configure(yscrollcommand=scrollbar.set)
+        self.details.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        self.details.tag_configure("title", font=(theme.FONT, 12, "bold"), spacing3=2)
+        self.details.tag_configure("meta", foreground=theme.MUTED)
+        self.details.tag_configure("cve", font=(theme.FONT, 10, "bold"), spacing1=8)
+        self.details.tag_configure("note", foreground=theme.WARN)
+        self.details.tag_configure("muted", foreground=theme.MUTED)
+        for level, color in theme.SEVERITY_TEXT.items():
+            self.details.tag_configure(f"sev_{level}", foreground=color, font=(theme.FONT, 10, "bold"))
 
     # ---------- events ----------
+
+    def open_cve(self, cve_id):
+        webbrowser.open(NVD_URL + cve_id)
 
     def show_details(self, event=None):
         selection = self.table.selection()
         if not selection:
             return
         row = self.rows[int(selection[0])]
+        box = self.details
 
-        self.details.config(state="normal")
-        self.details.delete("1.0", "end")
+        box.config(state="normal")
+        box.delete("1.0", "end")
+        for tag in box.tag_names():
+            if tag.startswith("link_"):
+                box.tag_delete(tag)
 
-        title = f"Port {row['port']} - {row['product']} {row['version']}".strip()
-        self.details.insert("end", title + "\n", "title")
+        title = f"Port {row['port']}  \u00b7  {row['product']} {row['version']}".strip()
+        box.insert("end", title + "\n", "title")
+
+        score = row["top_cvss"] if row["top_cvss"] is not None else "-"
+        box.insert("end", "Risk: ", "meta")
+        box.insert("end", theme.risk_label(row["level"]), f"sev_{row['level']}")
+        box.insert(
+            "end",
+            f"     Top CVSS: {score}     Matched by: {row['match'] or 'nothing'}\n",
+            "meta",
+        )
 
         if not row["cves"]:
-            self.details.insert("end", "\nNo matching CVEs were found for this service.\n")
-            self.details.insert(
+            box.insert("end", "\nNo matching CVEs were found for this service.\n")
+            box.insert(
                 "end",
-                "This does not prove it is safe. It may mean the exact version "
-                "could not be identified, so no match was possible.\n",
+                "This does not prove it is safe. It may mean the exact version could "
+                "not be identified, so no match was possible.\n",
                 "muted",
             )
         else:
-            for cve in row["cves"]:
-                score = cve["cvss_score"] if cve["cvss_score"] is not None else "n/a"
-                severity = cve["severity"] or "n/a"
-                self.details.insert(
-                    "end", f"\n{cve['cve_id']}  ({severity}, CVSS {score})\n", "cve"
+            if row["match"] == LOW_CONFIDENCE:
+                box.insert(
+                    "end",
+                    "\nLow confidence: these CVEs mention the service name, but the exact "
+                    "version was not identified, so they may not apply to this device.\n",
+                    "note",
                 )
-                description = cve["description"]
-                if len(description) > 300:
-                    description = description[:300] + "..."
-                self.details.insert("end", description + "\n")
+            for number, cve in enumerate(row["cves"]):
+                cve_score = cve["cvss_score"] if cve["cvss_score"] is not None else "n/a"
+                severity = cve["severity"] or "n/a"
 
-        self.details.config(state="disabled")
+                link_tag = f"link_{number}"
+                box.tag_configure(link_tag, foreground=theme.ACCENT, underline=True)
+                box.tag_bind(link_tag, "<Button-1>",
+                             lambda event, cid=cve["cve_id"]: self.open_cve(cid))
+                box.tag_bind(link_tag, "<Enter>", lambda event: box.config(cursor="hand2"))
+                box.tag_bind(link_tag, "<Leave>", lambda event: box.config(cursor=""))
+
+                box.insert("end", "\n")
+                box.insert("end", cve["cve_id"], ("cve", link_tag))
+                box.insert("end", "   ", "cve")
+                box.insert("end", str(severity), ("cve", f"sev_{severity}"))
+                box.insert("end", f"  \u00b7  CVSS {cve_score}\n", "meta")
+
+                description = cve["description"]
+                if len(description) > 400:
+                    description = description[:400] + "..."
+                box.insert("end", description + "\n")
+
+        box.config(state="disabled")
