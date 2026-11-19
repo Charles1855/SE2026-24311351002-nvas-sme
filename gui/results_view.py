@@ -1,8 +1,12 @@
+import os
 import tkinter as tk
 import webbrowser
-from tkinter import ttk
+from datetime import datetime
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 
-from analysis.risk_scorer import score_to_level
+from analysis.report_generator import default_filename, generate_report
+from analysis.risk_scorer import rank_findings
 from gui import theme
 
 NVD_URL = "https://nvd.nist.gov/vuln/detail/"
@@ -13,8 +17,11 @@ class ResultsView(tk.Frame):
     def __init__(self, parent, app, target, matched, info=None):
         super().__init__(parent, bg=theme.BG, padx=32, pady=14)
         self.app = app
-        self.rows = self.build_rows(matched)
-        info = info or {}
+        self.target = target
+        self.matched = matched
+        self.info = info or {}
+        self.rows = rank_findings(matched)
+        info = self.info
 
         # ---- title row ----
         top = tk.Frame(self, bg=theme.BG)
@@ -23,9 +30,10 @@ class ResultsView(tk.Frame):
             top, text="Scan Results", bg=theme.BG, fg=theme.TEXT,
             font=(theme.FONT, 20, "bold"),
         ).pack(side="left")
+        ttk.Button(top, text="New Scan", command=app.show_scan_view).pack(side="right")
         ttk.Button(
-            top, text="New Scan", style="Accent.TButton", command=app.show_scan_view
-        ).pack(side="right")
+            top, text="Export PDF", style="Accent.TButton", command=self.export_pdf
+        ).pack(side="right", padx=(0, 10))
 
         parts = [f"Target {target}", f"{len(self.rows)} open ports"]
         if info.get("finished"):
@@ -44,28 +52,6 @@ class ResultsView(tk.Frame):
         # Start with the highest-risk port selected
         if self.rows:
             self.table.selection_set("0")
-
-    # ---------- data ----------
-
-    def build_rows(self, matched):
-        rows = []
-        for entry in matched:
-            cves = sorted(entry["cves"], key=lambda c: c["cvss_score"] or 0, reverse=True)
-            scores = [c["cvss_score"] for c in cves if c["cvss_score"] is not None]
-            top = max(scores) if scores else None
-            rows.append({
-                "port": entry["port"],
-                "product": entry["product"] or entry["service"] or "unknown",
-                "version": entry["version"],
-                "cves": cves,
-                "top_cvss": top,
-                "level": score_to_level(top),
-                "match": entry.get("match_type", ""),
-            })
-        # highest CVSS first, then more CVEs, then lowest port number
-        rows.sort(key=lambda r: (r["top_cvss"] is None, -(r["top_cvss"] or 0),
-                                 -len(r["cves"]), r["port"]))
-        return rows
 
     # ---------- layout ----------
 
@@ -120,13 +106,8 @@ class ResultsView(tk.Frame):
         for level, (bg, fg) in theme.RISK_COLORS.items():
             self.table.tag_configure(level, background=bg, foreground=fg)
 
-        rank = 0
         for index, row in enumerate(self.rows):
-            if row["cves"]:
-                rank += 1
-                rank_text = str(rank)
-            else:
-                rank_text = "-"
+            rank_text = str(row["rank"]) if row["rank"] else "-"
             top = row["top_cvss"] if row["top_cvss"] is not None else "-"
             self.table.insert(
                 "",
@@ -185,6 +166,32 @@ class ResultsView(tk.Frame):
 
     def open_cve(self, cve_id):
         webbrowser.open(NVD_URL + cve_id)
+
+    def export_pdf(self):
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save report",
+            defaultextension=".pdf",
+            initialfile=default_filename(self.target, datetime.now()),
+            filetypes=[("PDF files", "*.pdf")],
+        )
+        if not path:
+            return  # the person cancelled
+        try:
+            generate_report(self.target, self.matched, self.info, path)
+        except Exception as error:
+            messagebox.showerror(
+                "Report failed", f"The report could not be created:\n\n{error}"
+            )
+            return
+        if messagebox.askyesno("Report saved", f"Saved to:\n{path}\n\nOpen it now?"):
+            self.open_file(path)
+
+    def open_file(self, path):
+        if hasattr(os, "startfile"):  # Windows
+            os.startfile(path)
+        else:
+            webbrowser.open(Path(path).resolve().as_uri())
 
     def show_details(self, event=None):
         selection = self.table.selection()
