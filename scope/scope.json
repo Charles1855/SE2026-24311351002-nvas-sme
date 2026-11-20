@@ -1,0 +1,12 @@
+{
+  "scope": {
+    "organisation": "Demo SME Ltd",
+    "authorised_by": "Charles Chima, Owner",
+    "networks": [
+      "192.168.56.0/24"
+    ],
+    "not_before": "2026-11-20T19:16:30+00:00",
+    "not_after": "2027-12-25T19:16:30+00:00"
+  },
+  "signature": "rXig0wG+1GMiJpNduonjvzYTKXmRUWogc5jpmCH9xJ+/pCudNmriJ67uJkRARZhoz6RQK1f+UgOuWYPzvMz4Ag=="
+}
