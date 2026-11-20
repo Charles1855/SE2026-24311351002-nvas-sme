@@ -4,4 +4,6 @@ __pycache__/
 .env
 *.db
 config.py
-report/
+reports/
+logs/
+scope/authoriser_private.pem
