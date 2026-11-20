@@ -1,0 +1,4 @@
+python-nmap==0.7.1
+requests==2.34.2
+fpdf2==2.8.8
+cryptography>=42
