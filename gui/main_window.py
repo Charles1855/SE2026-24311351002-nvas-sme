@@ -4,6 +4,7 @@ from analysis.vuln_matcher import HAS_KEY
 from gui import theme
 from gui.results_view import ResultsView
 from gui.scan_view import ScanView
+from scanner.scope_guard import ScopeError, load_default_guard
 
 
 class MainWindow(tk.Tk):
@@ -16,6 +17,14 @@ class MainWindow(tk.Tk):
 
         # remembered so "New Scan" comes back with the last target filled in
         self.last_target = "192.168.56.101"
+
+        # The signed scope decides what may be scanned. Without it, nothing is.
+        try:
+            self.guard = load_default_guard()
+            self.scope_problem = ""
+        except ScopeError as error:
+            self.guard = None
+            self.scope_problem = f"{error} ({error.code})"
 
         # Header bar (stays visible on every screen)
         header = tk.Frame(self, bg=theme.NAVY)
@@ -46,10 +55,13 @@ class MainWindow(tk.Tk):
             footer, text=key_text, bg="#e6ebf1", fg=key_color,
             font=(theme.FONT, 9, "bold"),
         ).pack(side="left", padx=28, pady=6)
+        if self.guard:
+            scope_text, scope_color = f"Scope: {self.guard.describe()}", theme.GOOD
+        else:
+            scope_text, scope_color = "Scope NOT LOADED: scans are blocked", theme.BAD
         tk.Label(
-            footer,
-            text="Only scan systems you own or have permission to test.",
-            bg="#e6ebf1", fg=theme.MUTED, font=(theme.FONT, 9),
+            footer, text=scope_text, bg="#e6ebf1", fg=scope_color,
+            font=(theme.FONT, 9, "bold"),
         ).pack(side="right", padx=28)
 
         # Area where the screens (frames) are swapped in and out

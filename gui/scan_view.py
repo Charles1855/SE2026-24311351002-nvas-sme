@@ -1,4 +1,3 @@
-import ipaddress
 import queue
 import threading
 import time
@@ -11,6 +10,7 @@ from analysis.vuln_matcher import match_scan_results
 from database.db import init_db, save_scan_result
 from gui import theme
 from scanner.port_scanner import PortScanner
+from scanner.scope_guard import ScopeError
 
 STEPS = [
     ("scan", "Port scan"),
@@ -45,7 +45,7 @@ class ScanView(tk.Frame):
             font=(theme.FONT, 20, "bold"),
         ).pack(anchor="w")
         tk.Label(
-            self, text="Enter the IP address of the device you want to check.",
+            self, text="Enter the IP address of a device inside your signed scope.",
             bg=theme.BG, fg=theme.MUTED, font=(theme.FONT, 10),
         ).pack(anchor="w", pady=(0, 10))
 
@@ -154,21 +154,41 @@ class ScanView(tk.Frame):
 
     # ---------- starting a scan (GUI thread) ----------
 
+    def target_allowed(self, text):
+        """
+        Ask the scope guard first. If it says no, nothing is started and nothing
+        is sent. Returns the checked target, or None when it was refused.
+        """
+        guard = self.app.guard
+        if guard is None:
+            self.show_refusal("Scope not loaded", self.app.scope_problem)
+            return None
+        try:
+            validated = guard.authorise(text)
+        except ScopeError as error:
+            self.show_refusal("Target refused", str(error))
+            return None
+        if not validated.is_single_host:
+            self.show_refusal("One IP address needed",
+                              "Scanning a whole network is not available yet. "
+                              "Enter a single IP address.")
+            return None
+        return validated
+
+    def show_refusal(self, title, message):
+        self.status.config(text="Refused. Nothing was scanned.")
+        self.log(f"REFUSED: {message}", "error")
+        messagebox.showerror(title, message)
+
     def start_scan(self):
         if self.scanning:
             return
-        target = self.target_entry.get().strip()
-        try:
-            ipaddress.ip_address(target)
-        except ValueError:
-            messagebox.showerror(
-                "Invalid IP address",
-                "Please enter a valid IP address, for example 192.168.0.1",
-            )
+        validated = self.target_allowed(self.target_entry.get())
+        if validated is None:
             return
 
-        self.app.last_target = target
-        self.target = target
+        self.target = str(validated)
+        self.app.last_target = self.target
         self.scanning = True
         self.started_at = time.time()
         self.set_controls(False)
@@ -181,7 +201,7 @@ class ScanView(tk.Frame):
         self.log_box.delete("1.0", "end")
         self.log_box.config(state="disabled")
 
-        threading.Thread(target=self.run_scan, args=(target,), daemon=True).start()
+        threading.Thread(target=self.run_scan, args=(validated,), daemon=True).start()
         self.after(100, self.poll_messages)
         self.after(500, self.tick)
 
@@ -195,7 +215,8 @@ class ScanView(tk.Frame):
     # ---------- the actual work (background thread) ----------
     # The worker never touches widgets. It only puts messages in the queue.
 
-    def run_scan(self, target):
+    def run_scan(self, validated):
+        target = str(validated)
         put = self.messages.put
         # NVD problems (timeouts, retries) show up in the activity log too
         vuln_matcher.warning_hook = lambda text: put(("log", text.strip(), "warn"))
@@ -206,7 +227,7 @@ class ScanView(tk.Frame):
             put(("indeterminate",))
             put(("status", f"Scanning {target} (ports 1-10000). This can take a minute..."))
             put(("log", f"Starting port scan on {target}", "info"))
-            scan_results = PortScanner().scan_target(target)
+            scan_results = PortScanner(self.app.guard).scan_target(validated)
 
             if not scan_results:
                 put(("step", "scan", "failed"))
