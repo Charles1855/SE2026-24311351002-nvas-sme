@@ -281,6 +281,17 @@ class AuditTests(ScopeFixture):
         self.assert_refused(guard, "x" * 5000, "INVALID_TARGET")
         self.assertEqual(len(guard.audit[0]["target"]), 200)
 
+    def test_the_audit_trail_names_who_asked(self):
+        guard = self.guard()
+        guard.authorise("192.168.56.5", actor="operator1")
+        self.assert_refused_by(guard, "8.8.8.8", "viewer1")
+        self.assertEqual([(e["actor"], e["decision"]) for e in guard.audit],
+                         [("operator1", "ALLOWED"), ("viewer1", "REFUSED")])
+
+    def assert_refused_by(self, guard, target, actor):
+        with self.assertRaises(ScopeError):
+            guard.authorise(target, actor=actor)
+
     def test_describe_summarises_the_scope(self):
         self.assertIn("Demo SME Ltd | 192.168.56.0/24 | valid until", self.guard().describe())
 
