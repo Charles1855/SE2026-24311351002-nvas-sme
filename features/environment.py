@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 from datetime import datetime, timezone
 from unittest import mock
@@ -6,6 +7,8 @@ from unittest import mock
 import nmap
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from auth.service import AuthService
+from auth.user_store import UserStore
 from test_scope_guard import EngineSpy, public_pem
 
 
@@ -24,6 +27,16 @@ def before_scenario(context, scenario):
     context.error = None
     context.guard = None
     context.now = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+
+    # a fresh, empty account database (cheap password hashing keeps the scenarios fast)
+    database_path = os.path.join(context.folder.name, "accounts.db")
+    context.store = UserStore(lambda: sqlite3.connect(database_path))
+    context.store.init()
+    context.auth = AuthService(context.store, clock=lambda: context.now, log_n=4)
+    context.passwords = {}
+    context.sessions = {}
+    context.auth_error = None
+    context.auth_session = None
 
     # nmap is replaced by a spy that counts every use
     context.spy = EngineSpy()
