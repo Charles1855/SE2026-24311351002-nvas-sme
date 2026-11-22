@@ -340,6 +340,7 @@ def build_summary_page(pdf, target, rows, info, generated_at):
         ("Target", target),
         ("Scan finished", f"{finished:%d %B %Y, %H:%M}"),
         ("Scan duration", format_duration(info.get("seconds"))),
+        ("Scan run by", info.get("operator") or "not recorded"),
         ("Open ports found", str(len(rows))),
         ("Services with CVEs", f"{with_cves} of {len(rows)}"),
         ("CVE data source", "US National Vulnerability Database (NVD)"),

@@ -213,7 +213,7 @@ class ScopeGuard:
     def from_files(cls, scope_path, public_key_path, **options):
         return cls(load_scope(scope_path, public_key_path), **options)
 
-    def authorise(self, target_text):
+    def authorise(self, target_text, actor=""):
         """Return a ValidatedTarget, or raise ScopeError. Never touches the network."""
         try:
             network = parse_target(target_text)
@@ -223,9 +223,9 @@ class ScopeGuard:
                                  f"{describe_network(network)} is outside the authorised "
                                  f"scope of {self.scope.organisation}.")
         except ScopeError as error:
-            self.record(target_text, "REFUSED", error.code)
+            self.record(target_text, "REFUSED", error.code, actor)
             raise
-        self.record(target_text, "ALLOWED", "IN_SCOPE")
+        self.record(target_text, "ALLOWED", "IN_SCOPE", actor)
         return ValidatedTarget(network, _TOKEN)
 
     def check_window(self):
@@ -236,9 +236,10 @@ class ScopeGuard:
             raise ScopeError("SCOPE_EXPIRED",
                              "The scope file has expired. Ask the authoriser for a new one.")
 
-    def record(self, target_text, decision, code):
+    def record(self, target_text, decision, code, actor=""):
         entry = {
             "time": self.clock().isoformat(),
+            "actor": str(actor)[:64],
             "target": str(target_text)[:200],
             "decision": decision,
             "code": code,

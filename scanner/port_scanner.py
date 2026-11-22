@@ -14,7 +14,7 @@ class PortScanner:
     def __init__(self, guard):
         self.guard = guard
 
-    def scan_target(self, target, port_range="1-10000"):
+    def scan_target(self, target, port_range="1-10000", actor=""):
         """
         Scan one target for open ports and detected services.
 
@@ -30,7 +30,7 @@ class PortScanner:
                         service, product, version and cpe.
         """
         # refuses BEFORE anything is sent (a target the guard already checked is not checked twice)
-        validated = target if isinstance(target, ValidatedTarget) else self.guard.authorise(target)
+        validated = target if isinstance(target, ValidatedTarget) else self.guard.authorise(target, actor)
         if not validated.is_single_host:
             raise ValueError("Scanning a whole network arrives with the discovery "
                              "stage. Give a single IP address for now.")
