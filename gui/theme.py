@@ -79,6 +79,16 @@ def setup_styles(root):
     )
 
     style.configure(
+        "Header.TButton",
+        font=(FONT, 9),
+        padding=(10, 4),
+        background="#2c4f7f",
+        foreground="white",
+        borderwidth=0,
+    )
+    style.map("Header.TButton", background=[("active", "#3b64a0")])
+
+    style.configure(
         "Treeview",
         rowheight=28,
         font=(FONT, 10),

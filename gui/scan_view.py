@@ -7,6 +7,7 @@ from tkinter import ttk, messagebox, scrolledtext
 
 from analysis import vuln_matcher
 from analysis.vuln_matcher import match_scan_results
+from auth.service import AuthError
 from database.db import init_db, save_scan_result
 from gui import theme
 from scanner.port_scanner import PortScanner
@@ -115,10 +116,20 @@ class ScanView(tk.Frame):
         )
         self.log_box.pack(fill="both", expand=True)
         self.log_box.tag_configure("time", foreground=theme.MUTED)
+        self.apply_role()
         for level, color in LOG_COLORS.items():
             self.log_box.tag_configure(level, foreground=color)
 
     # ---------- small helpers ----------
+
+    def apply_role(self):
+        """Roles that cannot scan see why, instead of a button that does nothing."""
+        if self.app.can("scan"):
+            return
+        self.scan_button.config(state="disabled")
+        self.target_entry.config(state="disabled")
+        self.status.config(text=f"Your role ({self.app.session.role}) can look at results "
+                                "but cannot start scans.")
 
     def make_card(self):
         return tk.Frame(
@@ -164,7 +175,7 @@ class ScanView(tk.Frame):
             self.show_refusal("Scope not loaded", self.app.scope_problem)
             return None
         try:
-            validated = guard.authorise(text)
+            validated = guard.authorise(text, actor=self.app.session.username)
         except ScopeError as error:
             self.show_refusal("Target refused", str(error))
             return None
@@ -182,6 +193,11 @@ class ScanView(tk.Frame):
 
     def start_scan(self):
         if self.scanning:
+            return
+        try:
+            self.app.require("scan")
+        except AuthError as error:
+            self.show_refusal("Not allowed", error.message)
             return
         validated = self.target_allowed(self.target_entry.get())
         if validated is None:
@@ -337,5 +353,6 @@ class ScanView(tk.Frame):
         messagebox.showerror("Scan failed", f"The scan could not finish:\n\n{error}")
 
     def open_results(self):
-        info = {"seconds": self.elapsed, "finished": datetime.now()}
+        info = {"seconds": self.elapsed, "finished": datetime.now(),
+                "operator": self.app.session.username}
         self.app.show_results_view(self.target, self.matched, info)
