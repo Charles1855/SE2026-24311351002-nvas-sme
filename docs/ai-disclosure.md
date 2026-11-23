@@ -23,4 +23,4 @@
 - [e.g. elicitation interviews, SUS sessions, reliability test runs, anything you did with real people]
 
 ## Statement
-I understand the code and documents in this repository and can explain and modify them live.
+I understand the code and documents in this repository and can explain them.
