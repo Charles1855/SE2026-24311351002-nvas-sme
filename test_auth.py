@@ -4,6 +4,7 @@ Tests for passwords, accounts, roles, lockout and the security-event log.
 Run from the project root:
     python -m unittest test_auth -v
 """
+import contextlib
 import os
 import sqlite3
 import tempfile
@@ -145,11 +146,10 @@ class SetupAndUsernameTests(AuthFixture):
 
     def test_nothing_in_the_database_is_the_plain_password(self):
         self.make_admin()
-        with sqlite3.connect(self.path) as conn:
+        with contextlib.closing(sqlite3.connect(self.path)) as conn:
             text = repr(conn.execute("SELECT * FROM users").fetchall())
         self.assertNotIn(GOOD, text)
         self.assertIn("scrypt$", text)
-
 
 class LoginTests(AuthFixture):
     def test_correct_credentials_sign_in_and_are_remembered(self):
