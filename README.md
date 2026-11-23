@@ -1,3 +1,10 @@
+# Network Vulnerability Assessment System (NVAS)
+
+**Assignment token:** CC02-P95R-SZ26
+**Registration no.:** 24311351002
+**Module:** 351 CS 3201, Software Engineering
+
+**Stack:** Python 3, python-nmap, requests, fpdf2, Tkinter, SQLite, NVD API 2.0
 # Network Vulnerability Assessment System
 
 A desktop tool that scans a device on your network, identifies the services it
