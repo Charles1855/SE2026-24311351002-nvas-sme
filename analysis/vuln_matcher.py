@@ -12,12 +12,18 @@ except ImportError:
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 KEEP_PER_SERVICE = 10  # keep the highest-scoring CVEs for each service
 
+# NVD metric key -> CVSS version label. Only 3.1 satisfies "CVSS v3.1 base score";
+# anything else is kept as a fallback and labelled as such downstream.
+CVSS_VERSIONS = {"cvssMetricV31": "3.1", "cvssMetricV30": "3.0",
+                 "cvssMetricV40": "4.0", "cvssMetricV2": "2.0"}
+
 HAS_KEY = bool(NVD_API_KEY) and NVD_API_KEY != ""
 # NVD allows 50 requests per 30 s with a key and 5 per 30 s without one
 REQUEST_DELAY = 0.8 if HAS_KEY else 6.5
 
 _last_request = 0.0
 warning_hook = None  # the GUI sets this so NVD problems show in its activity log
+lookup_failures = 0  # NVD requests that failed after every retry; reset for each scan
 
 
 # ---------- talking to NVD ----------
@@ -39,6 +45,7 @@ def _throttle():
 
 def _request(params, retries=3):
     """Call the NVD API. Returns the JSON, or None if it failed or found nothing."""
+    global lookup_failures
     headers = {"apiKey": NVD_API_KEY} if HAS_KEY else {}
     for attempt in range(1, retries + 1):
         _throttle()
@@ -57,6 +64,7 @@ def _request(params, retries=3):
             _warn(f"  [!] NVD request failed (attempt {attempt}/{retries}): {error}")
             if attempt < retries:
                 time.sleep(3)
+    lookup_failures += 1  # "no answer" is not the same as "no vulnerabilities"
     return None
 
 
@@ -67,10 +75,11 @@ def _parse(data, keep):
         cve = item["cve"]
         metrics = cve.get("metrics", {})
 
-        score, severity = None, None
+        score, severity, cvss_version = None, None, None
         for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV40", "cvssMetricV2"):
             if key in metrics:
                 metric = metrics[key][0]
+                cvss_version = CVSS_VERSIONS[key]
                 score = metric["cvssData"]["baseScore"]
                 # v3/v4 keep baseSeverity inside cvssData, v2 keeps it beside it
                 severity = metric["cvssData"].get("baseSeverity") or metric.get("baseSeverity")
@@ -84,6 +93,7 @@ def _parse(data, keep):
             "cve_id": cve["id"],
             "description": description,
             "cvss_score": score,
+            "cvss_version": cvss_version,
             "severity": severity,
         })
 
@@ -164,6 +174,8 @@ def find_cves(entry):
 
 
 def match_scan_results(scan_results, progress_callback=None):
+    global lookup_failures
+    lookup_failures = 0
     matched = []
     total = len(scan_results)
     for i, entry in enumerate(scan_results, start=1):
