@@ -6,6 +6,7 @@ from datetime import datetime
 from tkinter import ttk, messagebox, scrolledtext
 
 from analysis import vuln_matcher
+from analysis.scan_integration import record_scan
 from analysis.vuln_matcher import match_scan_results
 from auth.service import AuthError
 from database.db import init_db, save_scan_result
@@ -273,11 +274,43 @@ class ScanView(tk.Frame):
                     cves=entry["cves"],
                 )
             put(("log", "Results saved to the database", "ok"))
+            self.record_findings(target, matched, put)
             put(("step", "save", "done"))
 
             put(("done", target, matched))
         except Exception as error:
             put(("error", str(error)))
+
+    def record_findings(self, target, matched, put):
+        """
+        Rank the findings, store them, and compare with the previous scan of this
+        target. Runs on the worker thread, so it only reports through `put`.
+        """
+        if vuln_matcher.lookup_failures:
+            put(("log", f"{vuln_matcher.lookup_failures} NVD lookup(s) failed, so this scan was "
+                        "not recorded for comparison (missing CVEs would wrongly show as "
+                        "'fixed'). Scan again when the connection is stable.", "warn"))
+            return
+        try:
+            recorded = record_scan(matched, target)
+        except Exception as error:  # the scan already succeeded: never lose it over this
+            put(("log", f"Could not rank or compare findings: {error}", "warn"))
+            return
+        findings = recorded["findings"]
+        put(("log", f"Ranked {len(findings)} finding(s) by CVSS and asset criticality", "ok"))
+        fallback = sum(1 for f in findings if f.score_basis != "CVSS v3.1")
+        if fallback:
+            put(("log", f"{fallback} finding(s) use a CVSS fallback score (not v3.1)", "warn"))
+
+        delta = recorded["delta"]
+        if delta is None:
+            put(("log", "First recorded scan of this target: nothing to compare yet", "info"))
+            return
+        s = delta["summary"]
+        put(("log", f"Compared with scan #{recorded['previous_run_id']}: {s['new']} new, "
+                    f"{s['fixed']} fixed, {s['persisting']} persisting", "ok"))
+        if recorded["report_paths"]:
+            put(("log", f"Delta report saved: {recorded['report_paths'][1]}", "ok"))
 
     # ---------- receiving updates (GUI thread) ----------
 
