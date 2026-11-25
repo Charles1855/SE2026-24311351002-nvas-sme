@@ -32,6 +32,7 @@ def _entry(f: dict) -> dict:
         "service": f.get("service", ""),
         "cve_id": f["cve_id"],
         "cvss": f["cvss"],
+        "cvss_version": f.get("cvss_version") or "3.1",
         "risk_score": f["risk_score"],
         "band": f["band"],
         "evidence_hash": f["evidence_hash"],
@@ -100,14 +101,14 @@ def _md_table(title: str, rows: list[dict], with_change_flag: bool = False) -> l
     lines = [f"## {title} ({len(rows)})", ""]
     if not rows:
         return lines + ["_None._", ""]
-    head = "| Host:Port | CVE | CVSS | Risk | Band | Evidence hash (SHA-256, first 16) |"
+    head = "| Host:Port | CVE | CVSS (version) | Risk | Band | Evidence hash (SHA-256, first 16) |"
     sep = "|---|---|---|---|---|---|"
     if with_change_flag:
         head = head + " Evidence changed |"
         sep += "---|"
     lines += [head, sep]
     for r in rows:
-        line = (f"| {r['host']}:{r['port']}/{r['protocol']} | {r['cve_id']} | {r['cvss']} | "
+        line = (f"| {r['host']}:{r['port']}/{r['protocol']} | {r['cve_id']} | {r['cvss']} (v{r['cvss_version']}) | "
                 f"{r['risk_score']} | {r['band']} | `{r['evidence_hash'][:16]}` |")
         if with_change_flag:
             line += f" {'yes' if r['evidence_changed'] else 'no'} |"
