@@ -138,6 +138,30 @@ def _pick(raw: dict, names: Iterable[str], default=None):
     return default
 
 
+def _read_identity(raw: dict):
+    """(cve_id, host, port) of a row, or None when the row has no CVE."""
+    cve = _pick(raw, ("cve_id", "cve", "CVE"))
+    if not cve:
+        return None
+    cve = str(cve).strip().upper()
+    host = _pick(raw, ("host", "ip", "ip_address", "target"))
+    if not host:
+        raise ValueError("finding has no host/ip")
+    port = _pick(raw, ("port", "portid"))
+    if port is None:
+        raise ValueError(f"finding {cve} on {host} has no port")
+    return cve, str(host).strip(), int(port)
+
+
+def _read_cvss(raw: dict) -> tuple[float, str]:
+    """(score, version). The score must be within 0-10."""
+    cvss = float(_pick(raw, ("cvss", "cvss_score", "cvss_base", "base_score"), 0.0))
+    if not 0.0 <= cvss <= 10.0:
+        raise ValueError(f"CVSS score out of range 0-10: {cvss}")
+    # a matcher that does not report the version is assumed to give v3.1 scores
+    return cvss, str(_pick(raw, ("cvss_version",), "3.1"))
+
+
 def normalise_finding(raw) -> Optional[Finding]:
     """
     Turn one row (dict or sqlite3.Row) from your pipeline into a Finding.
@@ -147,38 +171,22 @@ def normalise_finding(raw) -> Optional[Finding]:
     Rows with no CVE (ports where the NVD matched nothing) return None.
     """
     raw = dict(raw)
-    cve = _pick(raw, ("cve_id", "cve", "CVE"))
-    if not cve:
+    identity = _read_identity(raw)
+    if identity is None:
         return None
-    cve = str(cve).strip().upper()
+    cve, host, port = identity
+    cvss, cvss_version = _read_cvss(raw)
 
-    host = _pick(raw, ("host", "ip", "ip_address", "target"))
-    if not host:
-        raise ValueError("finding has no host/ip")
-    host = str(host).strip()
-
-    port = _pick(raw, ("port", "portid"))
-    if port is None:
-        raise ValueError(f"finding {cve} on {host} has no port")
-    port = int(port)
-
-    cvss = float(_pick(raw, ("cvss", "cvss_score", "cvss_base", "base_score"), 0.0))
-    if not 0.0 <= cvss <= 10.0:
-        raise ValueError(f"CVSS score out of range 0-10: {cvss}")
-
-    cvss_version = str(_pick(raw, ("cvss_version",), "3.1"))
     protocol = str(_pick(raw, ("protocol", "proto"), "tcp")).lower()
     service = str(_pick(raw, ("service", "service_name", "name"), ""))
     version = str(_pick(raw, ("version", "service_version", "product_version"), ""))
     banner = str(_pick(raw, ("banner", "evidence", "extrainfo"), ""))
-    description = str(_pick(raw, ("description", "summary"), ""))
-
-    basis = "CVSS v3.1" if cvss_version.startswith("3") else f"CVSS v{cvss_version} (fallback)"
+    basis = "CVSS v3.1" if cvss_version == "3.1" else f"CVSS v{cvss_version} (fallback)"
 
     return Finding(
         host=host, port=port, protocol=protocol, service=service, version=version,
         banner=banner, cve_id=cve, cvss=cvss, cvss_version=cvss_version,
-        description=description,
+        description=str(_pick(raw, ("description", "summary"), "")),
         fingerprint=make_fingerprint(host, port, protocol, cve),
         evidence_hash=make_evidence_hash(host, port, protocol, service, version,
                                          banner, cve, cvss, cvss_version),
