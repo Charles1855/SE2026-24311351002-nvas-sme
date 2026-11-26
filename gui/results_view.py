@@ -20,7 +20,7 @@ class ResultsView(tk.Frame):
         self.target = target
         self.matched = matched
         self.info = info or {}
-        self.rows = rank_findings(matched)
+        self.rows = rank_findings(matched, target)
         info = self.info
 
         # ---- title row ----
@@ -36,6 +36,8 @@ class ResultsView(tk.Frame):
         ).pack(side="right", padx=(0, 10))
 
         parts = [f"Target {target}", f"{len(self.rows)} open ports"]
+        if self.rows:
+            parts.append(f"asset criticality {self.rows[0]['criticality']} of 5")
         if info.get("finished"):
             parts.append(f"scanned at {info['finished'].strftime('%H:%M')}")
         if info.get("seconds") is not None:
@@ -79,17 +81,18 @@ class ResultsView(tk.Frame):
         )
         frame.pack(fill="x")  # fixed height: spare window room goes to the details panel
 
-        columns = ("rank", "port", "product", "version", "cves", "cvss", "risk", "match")
+        columns = ("rank", "port", "product", "version", "cves", "cvss", "score", "risk", "match")
         self.table = ttk.Treeview(
             frame, columns=columns, show="headings", height=6, selectmode="browse"
         )
         headings = {
             "rank": ("#", 46),
             "port": ("Port", 64),
-            "product": ("Service", 220),
-            "version": ("Version", 150),
+            "product": ("Service", 200),
+            "version": ("Version", 130),
             "cves": ("CVEs", 56),
             "cvss": ("Top CVSS", 84),
+            "score": ("Risk score", 84),
             "risk": ("Risk", 100),
             "match": ("Match", 140),
         }
@@ -109,6 +112,7 @@ class ResultsView(tk.Frame):
         for index, row in enumerate(self.rows):
             rank_text = str(row["rank"]) if row["rank"] else "-"
             top = row["top_cvss"] if row["top_cvss"] is not None else "-"
+            score = row["risk_score"] if row["risk_score"] is not None else "-"
             self.table.insert(
                 "",
                 "end",
@@ -120,6 +124,7 @@ class ResultsView(tk.Frame):
                     row["version"],
                     len(row["cves"]),
                     top,
+                    score,
                     theme.risk_label(row["level"]),
                     row["match"] or "-",
                 ),
@@ -210,11 +215,13 @@ class ResultsView(tk.Frame):
         box.insert("end", title + "\n", "title")
 
         score = row["top_cvss"] if row["top_cvss"] is not None else "-"
+        risk = row["risk_score"] if row["risk_score"] is not None else "-"
         box.insert("end", "Risk: ", "meta")
         box.insert("end", theme.risk_label(row["level"]), f"sev_{row['level']}")
         box.insert(
             "end",
-            f"     Top CVSS: {score}     Matched by: {row['match'] or 'nothing'}\n",
+            f"     Top CVSS: {score}     Risk score: {risk} (asset criticality "
+            f"{row['criticality']})     Matched by: {row['match'] or 'nothing'}\n",
             "meta",
         )
 
