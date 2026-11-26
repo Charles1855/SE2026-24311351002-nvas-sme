@@ -402,7 +402,7 @@ def generate_report(target, matched, info=None, output_path=None, generated_at=N
     """
     info = info or {}
     generated_at = generated_at or datetime.now()
-    rows = rank_findings(matched)
+    rows = rank_findings(matched, target)
 
     pdf = ReportPDF(target)
     build_summary_page(pdf, target, rows, info, generated_at)
