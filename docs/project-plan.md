@@ -3,16 +3,6 @@ Charles Chima, 24311351002, token CC02-P95R-SZ26. Prepared Wed 25 Nov 2026 for s
 
 ---
 
-## 0. Read this first
-
-The card asks for about **66 hours of work**. Even with unlimited parallel help the **critical path is 16.6 hours**. You have roughly **19 working hours** left, so this plan does not try to do everything. It does the items that make the system and the evidence real first, and it lists honestly what will not be finished.
-
-Two things to do today that can change the picture:
-1. **Ask the lecturer for a short extension now**, with evidence of progress (repo history, 113 tests, three of the four properties working). A short, honest email is better than a rushed, thin submission. Something like: *"Dear Sir/Madam, I am registration 24311351002. My assignment is due 26 Nov. I have completed [x, y, z] and have evidence in the repository, but the card's scope (about 65 hours of tasks) will not fit in the remaining time. May I have an extension to [date] to finish [the remaining items]? Charles Chima."*
-2. **Assume the deadline is the end of 26 Nov** unless the lecturer says otherwise. If it is earlier, cut from the bottom of the schedule in section 1.
-
----
-
 ## 1. Schedule for the next 24 hours (Central Africa Time)
 
 This is the single-person timetable you actually follow. The CPM network in section 2 is the formal plan for the card's simulated team.
@@ -101,7 +91,7 @@ Regenerate the table and chart with `python scripts/cpm_pert.py`. It writes `doc
 
 ## 3. Processes found and processes used
 
-**Found (reconstruct from your commit history, as the card asks).** These come from how you described the project, so check them against your `git log` before you present them:
+**Found (reconstruct from your commit history, as the card asks).** 
 - **Incremental, phased delivery** on a 16-week roadmap with weekly milestones: CLI scanner, then CVE matching with SQLite, then the Tkinter GUI, then reporting and testing.
 - **Module-by-module validation** with standalone test files before integration (for example `test_vuln_matcher.py`).
 - **Conventional commit prefixes:** `feat:` only for validated work, `wip:` for in-progress work, plus `chore:`, `fix:`, `test:`.
@@ -116,7 +106,7 @@ git log --format=%s | ForEach-Object { if ($_ -match '^(\w+):') { $Matches[1] } 
 ```
 The first gives commits per day (needed for the 8-day and 25% rules and the control chart). The second gives commits by type (feat, fix, test, wip) for the rework and defect measurement.
 
-**Used during this assignment (what we actually did):**
+**Used during this assignment:**
 | Process | Where it shows |
 |---|---|
 | Characterisation-first change | 20 tests written against the unchanged `risk_scorer.py` before it was modified |
